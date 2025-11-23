@@ -1,4 +1,6 @@
 from fpdf import FPDF
+import tempfile
+import io
 import base64
 import io
 import requests
@@ -33,7 +35,6 @@ class PDF(FPDF):
             self.ln() # Quebra de linha após cada par chave-valor
         self.ln(5)
         
-    # --- NOVO MÉTODO PARA CRIAR A TABELA ---
     def create_comparison_table(self, table_data):
         """
         Cria a tabela de Geração vs. Consumo.
@@ -96,15 +97,10 @@ class PDF(FPDF):
 
 # --- FUNÇÃO PARA BAIXAR O MAPA ---
 def get_static_map_image(lat, lon):
-    """
-    Baixa a imagem do mapa estático e retorna como um objeto BytesIO.
-    """
     try:
-        # Usando um provedor alternativo de mapas estáticos (Yandex)
         map_url = f"https://static-maps.yandex.ru/1.x/?lang=pt_BR&ll={lon},{lat}&z=12&l=map&size=600,450&pt={lon},{lat},pm2rdl"
         response = requests.get(map_url, timeout=10)
         response.raise_for_status()
-        # Retorna o conteúdo da imagem como bytes
         return response.content
     except requests.exceptions.RequestException as e:
         print(f"Erro ao baixar imagem do mapa: {e}")
@@ -146,24 +142,20 @@ def create_enhanced_pdf_report(data, client_info, lat, lon):
         pdf.create_comparison_table(data['dados_mensais'])
     else:
         pdf.write_error("Tabela Comparativa (Dados mensais não encontrados no relatório)")
-    # --- FIM DA NOVA SEÇÃO ---
-
-    # --- Mapa de Localização ---
     pdf.add_page()
     pdf.section_title("Localização do Projeto")
     map_image_bytes = get_static_map_image(lat, lon)
     if map_image_bytes:
         try:
-            # A biblioteca FPDF precisa de um nome de arquivo ou um objeto BytesIO.
-            # Vamos usar BytesIO para carregar a imagem da memória.
-            image_file = io.BytesIO(map_image_bytes)
-            # Salvamos a posição Y atual para centralizar a imagem verticalmente
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                tmp.write(map_image_bytes)
+                tmp_path = tmp.name
+
             start_y = pdf.get_y()
-            # Calcula a altura da imagem mantendo a proporção (600x450)
-            img_width = pdf.w - 20 # Largura da imagem (página - 20mm de margem)
+            img_width = pdf.w - 20
             img_height = (img_width / 600) * 450
-            
-            pdf.image(image_file, x=10, y=start_y, w=img_width, h=img_height, type='png')
+
+            pdf.image(tmp_path, x=10, y=start_y, w=img_width, h=img_height)
         except Exception as e:
             pdf.write_error(f"Mapa de Localização (Erro ao renderizar imagem): {e}")
     else:
