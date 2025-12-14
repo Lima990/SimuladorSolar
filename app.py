@@ -7,43 +7,9 @@ import numpy_financial as npf  # Uma caixa de ferramentas específica para cálc
 import pandas as pd  # Ótimo para organizar e manipular dados em formato de tabelas (chamadas de DataFrames).
 import streamlit as st  # A principal ferramenta para construir a interface web do nosso aplicativo (botões, caixas de texto, gráficos, etc.).
 
-# Importações dos novos módulos (Presumindo que api_service e pdf_report existem)
-# from api_service import get_coordinates, get_pvgis_data
-# from pdf_report import create_enhanced_pdf_report
-
-# --- Funções Mock para Simulação (Remover em ambiente real) ---
-def get_coordinates(cidade):
-    # Simula a busca de coordenadas
-    if "são paulo" in cidade.lower():
-        return -23.5505, -46.6333
-    return None, None
-
-def get_pvgis_data(lat, lon, perdas_sistema):
-    # Simula dados de geração PVGIS (E_m em kWh/kWp)
-    meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
-    # Dados simulados para E_m (kWh/kWp)
-    e_m_data = [100, 110, 130, 140, 150, 120, 115, 125, 135, 145, 120, 105]
-    
-    # Aplica as perdas do sistema
-    fator_perda = 1 - (perdas_sistema / 100)
-    e_m_ajustado = [e * fator_perda for e in e_m_data]
-    
-    return {
-        "outputs": {
-            "monthly": {
-                "fixed": [
-                    {"month": i + 1, "E_m": e_m_ajustado[i], "mes": meses[i]}
-                    for i, e in enumerate(e_m_ajustado)
-                ]
-            }
-        }
-    }
-
-def create_enhanced_pdf_report(full_report_data, client_data, lat, lon):
-    # Simula a criação do PDF e retorna um Base64 fictício
-    return "JVBERi0xLjQKJcOkw7zXCn..."
-# --- Fim das Funções Mock ---
-
+# Importações dos novos módulos
+from api_service import get_coordinates, get_pvgis_data
+from pdf_report import create_enhanced_pdf_report
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 # Define as configurações iniciais da página que o usuário verá no navegador.
@@ -87,7 +53,7 @@ with st.container(border=True):
     col1, col2 = st.columns(2)  # Divide o espaço em duas colunas.
     with col1:  # Conteúdo da primeira coluna.
         cidade = st.text_input(
-            "Cidade e Estado ou CEP", "São Paulo, SP", help="Ex: São Paulo, SP ou 01000-001"
+            "Cidade e Estado ou CEP", "", help="Ex: São Paulo, SP ou 01000-001"
         )
         tarifa_energia = st.number_input(
             "Valor da tarifa de energia (R$/kWh)",
@@ -166,7 +132,7 @@ with st.container(border=True):
 # --- Cartão 3: Parâmetros de Simulação e Financeiros ---
 with st.container(border=True):
     st.subheader("📈 Parâmetros de Simulação e Financeiros")
-    col6, col7, col8, col9 = st.columns(4) # Adicionando uma coluna para o novo parâmetro
+    col6, col7, col8 = st.columns(3)
     with col6:
         perdas_sistema = st.slider(
             "Perdas totais do sistema (%)", 5, 25, 14
@@ -178,12 +144,6 @@ with st.container(border=True):
     with col8:
         inflacao_energia = st.slider(
             "Inflação da tarifa de energia (% a.a.)", 1.0, 15.0, 7.0, 0.5
-        )
-    with col9: # Novo campo para escolha do método de dimensionamento
-        metodo_dimensionamento = st.selectbox(
-            "Método de Dimensionamento (kWp)",
-            ("Pior Mês (Conservador)", "Média Anual (Otimizado)"),
-            help="Escolha se o dimensionamento será pelo mês de menor geração ou pela média anual de geração."
         )
 
 # --- Cartão 4: Financiamento ---
@@ -249,7 +209,7 @@ if st.session_state.show_results:
             if not pvgis_data:  # Se não conseguiu obter os dados...
                 st.error("Falha ao obter dados da API PVGIS.")
             else:  # Se tudo deu certo, começam os cálculos!
-                # --- CÁLCULOS PRINCIPAIS ---
+                # --- CÁLCulos PRINCIPAIS ---
 
                 # Custo de disponibilidade (taxa mínima) da concessionária.
                 mapa_disponibilidade = {
@@ -262,253 +222,432 @@ if st.session_state.show_results:
 
                 # Organiza os dados de geração mensal em uma tabela (DataFrame).
                 df = pd.DataFrame(pvgis_data["outputs"]["monthly"]["fixed"])
-                
-                # --- LÓGICA DE DIMENSIONAMENTO ATUALIZADA ---
-                # Identifica a geração do pior mês do ano.
-                pior_mes_geracao_por_kwp = df["E_m"].min()
-                
-                # Calcula a geração média mensal por kWp
-                media_mensal_geracao_por_kwp = df["E_m"].mean()
 
-                # Define o fator de dimensionamento com base na escolha do usuário
-                if metodo_dimensionamento == "Pior Mês (Conservador)":
-                    fator_dimensionamento = pior_mes_geracao_por_kwp
-                    nome_fator = "Pior Mês"
-                else: # Média Anual (Otimizado)
-                    fator_dimensionamento = media_mensal_geracao_por_kwp
-                    nome_fator = "Média Anual"
-                
-                # Validação para evitar divisão por zero
-                if fator_dimensionamento <= 0:
-                    st.error(f"O fator de dimensionamento ({nome_fator}) é zero ou negativo. Verifique os dados de geração.")
-                    st.stop() # Sai da execução se o fator for inválido
+                # Identifica a geração do pior mês do ano. O sistema será dimensionado com base nele.
+                pior_mes_geracao_por_kwp = df["E_m"].min()
 
                 # Calcula o consumo que o sistema precisa suprir, incluindo a margem de segurança.
                 consumo_desejado_kwh = consumo_mensal_kwh_calculado * (
                     1 + margem_geracao_percent / 100
                 )
 
-                # DIMENSIONAMENTO DO SISTEMA: divide a necessidade de geração pelo fator de dimensionamento escolhido.
-                tamanho_sistema_kwp = consumo_desejado_kwh / fator_dimensionamento
-                # --- FIM DA LÓGICA DE DIMENSIONAMENTO ATUALIZADA ---
+                # DIMENSIONAMENTO DO SISTEMA: divide a necessidade de geração pela capacidade de geração do pior mês.
+                tamanho_sistema_kwp = (
+                    consumo_desejado_kwh / pior_mes_geracao_por_kwp
+                    if pior_mes_geracao_por_kwp > 0
+                    else 0
+                )
 
                 # Calcula a geração mensal estimada com o sistema dimensionado
                 df["geracao_estimada_kwh"] = df["E_m"] * tamanho_sistema_kwp
 
                 # Outros cálculos importantes...
-                geracao_anual_estimada = df["geracao_estimada_kwh"].sum()
-                consumo_anual_total = consumo_mensal_kwh_calculado * 12
-                
-                # Custo total do sistema
-                custo_total_wp = custo_watt_pico_modulo + custo_bos_watt_pico
-                custo_estimado_sistema = tamanho_sistema_kwp * 1000 * custo_total_wp
-                
-                # Cálculo da economia anual líquida (simplificado para o mock)
-                economia_bruta_mensal = consumo_mensal_kwh_calculado * tarifa_energia
-                economia_anual_liquida = (economia_bruta_mensal * 12) - (custo_disponibilidade_mensal * 12)
-                
-                # Cálculo do VPL, TIR e Payback (simplificado para o mock)
-                # TMA (Taxa Mínima de Atratividade) - Usando uma taxa de juros de mercado como proxy
-                tma_anual = 0.08 # 8% a.a.
-                
-                # Fluxo de caixa (simplificado)
-                anos = 25
-                fluxo_caixa = [-custo_estimado_sistema]
-                for ano in range(1, anos + 1):
-                    # Economia anual crescendo com a inflação da energia
-                    economia_projetada = economia_anual_liquida * ((1 + inflacao_energia / 100) ** ano)
-                    fluxo_caixa.append(economia_projetada)
-                
-                vpl = npf.npv(tma_anual, fluxo_caixa)
-                tir = npf.irr(fluxo_caixa) * 100
-                
-                # Payback Descontado (simplificado)
-                fluxo_acumulado = 0
-                payback_descontado_ano = "Não Calculado"
-                for i, valor in enumerate(fluxo_caixa):
-                    fluxo_acumulado += valor / ((1 + tma_anual) ** i)
-                    if fluxo_acumulado >= 0 and payback_descontado_ano == "Não Calculado":
-                        payback_descontado_ano = f"Aproximadamente {i} anos"
-                        
-                # CO2 e Árvores (valores de conversão fictícios)
-                fator_co2 = 0.00045 # ton CO2/kWh
-                fator_arvore = 0.01 # árvores/kWh
-                co2_evitado_ton = geracao_anual_estimada * anos * fator_co2
-                arvores_equivalentes = geracao_anual_estimada * anos * fator_arvore
-                
-                # --- APRESENTAÇÃO DOS RESULTADOS ---
+                geracao_anual_estimada = df[
+                    "geracao_estimada_kwh"
+                ].sum()  # Geração total em um ano.
+                custo_total_watt_pico = (
+                    custo_watt_pico_modulo + custo_bos_watt_pico
+                )  # Custo total por Watt-pico.
+                custo_estimado_sistema = (
+                    tamanho_sistema_kwp * custo_total_watt_pico * 1000
+                )  # Custo total do sistema.
+                consumo_anual_total = (
+                    sum(consumos_mensais)
+                    if consumos_mensais
+                    else consumo_mensal_kwh_calculado * 12
+                )  # Consumo total no ano.
+                energia_economizada_anual = min(
+                    geracao_anual_estimada, consumo_anual_total
+                )  # A economia é limitada pelo consumo.
+                economia_anual_bruta = (
+                    energia_economizada_anual * tarifa_energia
+                )  # Economia total em R$.
+                economia_anual_liquida = economia_anual_bruta - (
+                    custo_disponibilidade_mensal * 12
+                )  # Desconta a taxa mínima anual.
+
                 st.divider()
-                st.header("✅ Resultados da Simulação")
 
-                # --- Cartão de Resumo ---
+                # --- EXIBIÇÃO DOS RESULTADOS ---
+
+                # Cartão 1: Resumo Geral
                 with st.container(border=True):
-                    st.subheader("Sumário do Projeto")
-                    col_resumo1, col_resumo2, col_resumo3 = st.columns(3)
-                    
-                    col_resumo1.metric(
-                        "Potência Recomendada",
-                        f"{tamanho_sistema_kwp:.2f} kWp",
-                        help=f"Dimensionado pelo método: {metodo_dimensionamento}"
-                    )
-                    col_resumo2.metric(
-                        "Custo Estimado do Sistema",
-                        f"R$ {custo_estimado_sistema:,.2f}",
-                    )
-                    col_resumo3.metric(
-                        "Geração Anual Estimada",
-                        f"{geracao_anual_estimada:,.0f} kWh",
-                    )
+                    st.header("📊 Resumo Geral")
+                    resumo_col1, resumo_col2, resumo_col3 = st.columns(3)
+                    # st.metric exibe um número de forma destacada.
+                    with resumo_col1:
+                        st.metric(
+                            "Potência Recomendada", f"{tamanho_sistema_kwp:.2f} kWp"
+                        )
+                    with resumo_col2:
+                        st.metric("Custo Estimado", f"R$ {custo_estimado_sistema:,.2f}")
+                    with resumo_col3:
+                        st.metric("Economia Anual", f"R$ {economia_anual_liquida:,.2f}")
 
-                # --- Cartão de Análise Financeira ---
+                    st.divider()
+                    st.subheader(f"Localização: {cidade}")
+                    st.map(
+                        pd.DataFrame({"lat": [lat], "lon": [lon]}), zoom=10
+                    )  # Mostra um mapa interativo.
+                    st.divider()
+
+                    st.subheader("Indicadores Ambientais (25 anos)")
+                    co2_evitado_ton = (
+                        geracao_anual_estimada * 25 * 0.475
+                    ) / 1000  # Fator de conversão padrão.
+                    arvores_equivalentes = (
+                        co2_evitado_ton * 7.14
+                    )  # Fator de conversão padrão.
+                    amb_col1, amb_col2 = st.columns(2)
+                    with amb_col1:
+                        st.metric(
+                            "🌳 Árvores Equivalentes", f"{arvores_equivalentes:,.0f}"
+                        )
+                    with amb_col2:
+                        st.metric("💨 CO₂ Evitado", f"{co2_evitado_ton:,.2f} ton")
+
+                # Cartão 2: Análise de Investimento
                 with st.container(border=True):
-                    st.subheader("Análise Financeira")
-                    col_fin1, col_fin2, col_fin3 = st.columns(3)
-                    
-                    col_fin1.metric("VPL (Valor Presente Líquido)", f"R$ {vpl:,.2f}")
-                    col_fin2.metric("TIR (Taxa Interna de Retorno)", f"{tir:.2f}% a.a.")
-                    col_fin3.metric("Payback Descontado", payback_descontado_ano)
-
-                # --- Gráfico de Geração vs Consumo ---
-                st.subheader("Gráfico de Geração vs. Consumo")
-                
-                # Define as cores para o gráfico
-                color_scale = alt.Scale(
-                    domain=["Geração Estimada", "Consumo Informado", "Consumo Médio"],
-                    range=["#FFC300", "#3366CC", "#009933"],
-                )
-
-                # Prepara os dados para o gráfico
-                df["mes"] = pd.Categorical(
-                    df["mes"],
-                    categories=[
-                        "Jan",
-                        "Fev",
-                        "Mar",
-                        "Abr",
-                        "Mai",
-                        "Jun",
-                        "Jul",
-                        "Ago",
-                        "Set",
-                        "Out",
-                        "Nov",
-                        "Dez",
-                    ],
-                    ordered=True,
-                )
-                df["month"] = df.index + 1 # Adiciona coluna numérica para ordenação
-
-                if consumos_mensais:  # Se o usuário informou os 12 meses.
-                    df["consumo_informado_kwh"] = consumos_mensais
-                    
-                    df_chart = df.melt(
-                        id_vars=["mes", "month"],
-                        value_vars=["geracao_estimada_kwh", "consumo_informado_kwh"],
-                        var_name="Tipo",
-                        value_name="Energia (kWh)",
+                    st.header("💰 Análise de Investimento")
+                    degradacao_paineis_anual = (
+                        0.005  # Perda de eficiência dos painéis por ano (0.5%).
                     )
-                    df_chart["Tipo"] = df_chart["Tipo"].map(
+                    prazo_anos = 25  # Vida útil do projeto para análise.
+
+                    # MONTAGEM DO FLUXO DE CAIXA
+                    # O fluxo de caixa é uma lista de todas as entradas e saídas de dinheiro ao longo do tempo.
+
+                    if financiado == "Sim":
+                        valor_financiado = custo_estimado_sistema - valor_entrada
+                        if valor_financiado < 0:
+                            valor_financiado = 0
+                        # Calcula o valor da parcela mensal do financiamento.
+                        parcela_mensal = (
+                            npf.pmt(
+                                rate=taxa_juros_mensal / 100,
+                                nper=prazo_meses,
+                                pv=-valor_financiado,
+                            )
+                            if valor_financiado > 0
+                            else 0
+                        )
+                        st.info(f"**Parcela Mensal: R$ {parcela_mensal:,.2f}**")
+                        custo_anual_financiamento = parcela_mensal * 12
+
+                        fluxo_caixa = [
+                            -valor_entrada
+                        ]  # A primeira saída de dinheiro é a entrada do financiamento.
+                        economia_ano_a_ano = economia_anual_liquida
+                        # Loop para calcular o fluxo de cada ano.
+                        for ano in range(1, prazo_anos + 1):
+                            fluxo_ano = economia_ano_a_ano  # A entrada de dinheiro é a economia.
+                            if (
+                                ano <= prazo_meses / 12
+                            ):  # Se ainda estiver pagando o financiamento...
+                                fluxo_ano -= custo_anual_financiamento  # Subtrai o custo do financiamento.
+                            fluxo_caixa.append(
+                                fluxo_ano
+                            )  # Adiciona o resultado do ano ao fluxo de caixa.
+                            # Atualiza a economia para o próximo ano, aplicando inflação e degradação.
+                            economia_ano_a_ano *= (1 + inflacao_energia / 100) * (
+                                1 - degradacao_paineis_anual
+                            )
+                    else:  # Se o pagamento for à vista.
+                        fluxo_caixa = [
+                            -custo_estimado_sistema
+                        ]  # A única saída é o custo total no ano 0.
+                        economia_ano_a_ano = economia_anual_liquida
+                        for ano in range(1, prazo_anos + 1):
+                            fluxo_caixa.append(economia_ano_a_ano)
+                            economia_ano_a_ano *= (1 + inflacao_energia / 100) * (
+                                1 - degradacao_paineis_anual
+                            )
+
+                    # CÁLCULOS FINANCEIROS
+                    tma_anual = (
+                        st.slider(
+                            "Taxa Mínima de Atratividade (TMA % a.a.)",
+                            1.0,
+                            20.0,
+                            10.0,
+                            0.5,
+                            key="tma_slider",
+                        )
+                        / 100
+                    )
+                    # VPL (Valor Presente Líquido): Traz todos os valores do fluxo de caixa para o "dinheiro de hoje". Se for > 0, o projeto é lucrativo.
+                    vpl = npf.npv(tma_anual, fluxo_caixa)
+                    # TIR (Taxa Interna de Retorno): A taxa de rentabilidade do projeto. Deve ser maior que a TMA.
+                    tir = npf.irr(fluxo_caixa) * 100
+
+                    fin_col1, fin_col2 = st.columns(2)
+                    with fin_col1:
+                        st.metric("Valor Presente Líquido (VPL)", f"R$ {vpl:,.2f}")
+                        if vpl > 0:
+                            st.success("✅ Viável")
+                        else:
+                            st.warning("⚠️ Atenção: VPL negativo")
+                    with fin_col2:
+                        st.metric(
+                            "Taxa Interna de Retorno (TIR)",
+                            f"{tir:.2f}% a.a.",
+                            delta=f"{(tir - tma_anual * 100):.2f} p.p. vs TMA",
+                        )
+                        if tir > tma_anual * 100:
+                            st.success("✅ Viável")
+                        else:
+                            st.error("❌ Inviável")
+
+                    # Payback Descontado: Em quanto tempo o investimento se paga, considerando a TMA.
+                    vpl_anual = [
+                        npf.npv(tma_anual, fluxo_caixa[: i + 1])
+                        for i in range(len(fluxo_caixa))
+                    ]
+                    payback_descontado_ano = next(
+                        (
+                            f"~{ano} anos"
+                            for ano, vpl_valor in enumerate(vpl_anual)
+                            if vpl_valor > 0
+                        ),
+                        "Não alcançado",
+                    )
+                    st.metric("Payback Descontado", payback_descontado_ano)
+
+                    # GERAÇÃO DO GRÁFICO DE VPL
+                    df_vpl = pd.DataFrame(
                         {
-                            "geracao_estimada_kwh": "Geração Estimada",
-                            "consumo_informado_kwh": "Consumo Informado",
+                            "Ano": list(range(prazo_anos + 1)),
+                            "VPL Acumulado (R$)": vpl_anual,
                         }
                     )
-
-                    generation_chart = (
-                        alt.Chart(df_chart)
-                        .mark_bar(opacity=0.8)
-                        .encode(
-                            # 1. No eixo X, colocamos o 'Tipo' (Geração/Consumo) e removemos o rótulo do eixo
-                            x=alt.X("Tipo:N", axis=None, title=None),
-                            # 2. O eixo Y permanece o mesmo
-                            y=alt.Y("Energia (kWh):Q", title="Energia (kWh)"),
-                            # 3. A cor permanece a mesma
-                            color=alt.Color(
-                                "Tipo:N", scale=color_scale, title="Tipo de Energia"
+                    vpl_chart = (
+                        alt.Chart(df_vpl)
+                        .mark_area(
+                            line={"color": "#1f77b4"},
+                            color=alt.Gradient(
+                                gradient="linear",
+                                stops=[
+                                    alt.GradientStop(color="#d62728", offset=0),
+                                    alt.GradientStop(color="#2ca02c", offset=1),
+                                ],
+                                x1=1,
+                                x2=1,
+                                y1=1,
+                                y2=0,
                             ),
-                            # 4. Usamos 'column' para criar os grupos de meses
-                            column=alt.Column(
-                                "mes:N",
-                                sort=alt.EncodingSortField(field="month"),
-                                title="Mês",
-                                # Posiciona o header ('Jan', 'Fev'...) na parte de baixo
-                                header=alt.Header(
-                                    titleOrient="bottom", labelOrient="bottom"
-                                ),
+                        )
+                        .encode(
+                            x=alt.X("Ano:O", axis=alt.Axis(labelAngle=0)),
+                            y=alt.Y(
+                                "VPL Acumulado (R$):Q",
+                                title="VPL Acumulado (R$)",
+                                axis=alt.Axis(format="~s"),
                             ),
                             tooltip=[
-                                "mes",
-                                "Tipo",
-                                alt.Tooltip("Energia (kWh)", format=".0f"),
+                                "Ano",
+                                alt.Tooltip("VPL Acumulado (R$)", format=",.2f"),
                             ],
                         )
-                        .properties(
-                            title="Geração Estimada vs. Consumo Mensal Informado"
+                        .properties(title="Evolução do VPL Acumulado")
+                    )
+
+                    st.altair_chart(vpl_chart)
+
+                # --- NOVO BLOCO DO GRÁFICO DE GERAÇÃO ---
+                # Cartão 3: Geração vs Consumo
+                with st.container(border=True):
+                    st.header("📈 Geração Estimada vs Consumo Mensal")
+                    # df['geracao_estimada_kwh'] já foi calculado acima
+                    meses_pt_map = {
+                        m + 1: n
+                        for m, n in enumerate(
+                            [
+                                "Jan",
+                                "Fev",
+                                "Mar",
+                                "Abr",
+                                "Mai",
+                                "Jun",
+                                "Jul",
+                                "Ago",
+                                "Set",
+                                "Out",
+                                "Nov",
+                                "Dez",
+                            ]
                         )
-                        .interactive()
-                    )  # Permite zoom e pan
+                    }
+                    df["mes"] = df["month"].map(meses_pt_map)
 
-                else:  # Se foi informada apenas a média.
-                    # 1. Padronize o Dataframe de Geração (df)
-                    df_geracao = df.copy()
-                    df_geracao["Tipo"] = "Geração Estimada"
-                    df_geracao = df_geracao.rename(
-                        columns={"geracao_estimada_kwh": "valor_kwh"}
-                    )
+                    # Definição de cores para os gráficos
+                    color_scale = alt.Scale(
+                        domain=[
+                            "Geração Estimada",
+                            "Consumo Informado",
+                            "Consumo Médio",
+                        ],
+                        range=["#4c78a8", "#f58518", "#e45756"],
+                    )  # Azul, Laranja, Vermelho para distinção
 
-                    # 2. Crie o Dataframe de Consumo Médio (df_consumo)
-                    df_consumo = pd.DataFrame(
-                        {
-                            "mes": df["mes"],
-                            "month": df["month"],
-                            "valor_kwh": [consumo_mensal_kwh_calculado] * len(df),
-                            "Tipo": ["Consumo Médio"] * len(df),
-                        }
-                    )
-                    
-                    # 3. Concatene os dois DataFrames
-                    df_final = pd.concat(
-                        [
-                            df_geracao[["mes", "month", "valor_kwh", "Tipo"]],
-                            df_consumo[["mes", "month", "valor_kwh", "Tipo"]],
-                        ]
-                    )
+                    # Lógica para criar o gráfico correto dependendo de como o consumo foi informado.
+                    if consumos_mensais:
+                        df["consumo_informado_kwh"] = consumos_mensais
+                        df_chart = df.melt(
+                            id_vars=["mes", "month"],
+                            value_vars=[
+                                "geracao_estimada_kwh",
+                                "consumo_informado_kwh",
+                            ],
+                            var_name="Tipo",
+                            value_name="Energia (kWh)",
+                        )
+                        df_chart["Tipo"] = df_chart["Tipo"].map(
+                            {
+                                "geracao_estimada_kwh": "Geração Estimada",
+                                "consumo_informado_kwh": "Consumo Informado",
+                            }
+                        )
 
-                    generation_chart = (
-                        alt.Chart(df_final)
-                        .mark_bar(
-                            opacity=0.9
-                        )  # Ajustei opacidade para ficar mais nítido
-                        .encode(
-                            x=alt.X(
-                                "mes:N",
-                                sort=alt.EncodingSortField(field="month"),
-                                title="Mês",
-                                axis=alt.Axis(labelAngle=0),
-                            ),
-                            y=alt.Y("valor_kwh:Q", title="Energia (kWh)"),
-                            # O 'color' define a cor baseada no Tipo (Geração vs Consumo)
-                            color=alt.Color(
-                                "Tipo:N", scale=color_scale, title=None
-                            ),
-                            # --- O TRUQUE ESTÁ AQUI ---
-                            # xOffset desloca a barra baseado no Tipo, colocando-as lado a lado
-                            xOffset="Tipo:N",
-                            tooltip=[
-                                alt.Tooltip("mes", title="Mês"),
-                                alt.Tooltip("Tipo", title="Categoria"),
-                                alt.Tooltip(
-                                    "valor_kwh", format=".0f", title="Energia (kWh)"
+                        generation_chart = (
+                            alt.Chart(df_chart)
+                            .mark_bar(opacity=0.8)
+                            .encode(
+                                # 1. No eixo X, colocamos o 'Tipo' (Geração/Consumo) e removemos o rótulo do eixo
+                                x=alt.X("Tipo:N", axis=None, title=None),
+                                # 2. O eixo Y permanece o mesmo
+                                y=alt.Y("Energia (kWh):Q", title="Energia (kWh)"),
+                                # 3. A cor permanece a mesma
+                                color=alt.Color(
+                                    "Tipo:N", scale=color_scale, title="Tipo de Energia"
                                 ),
-                            ],
-                        )
-                        .properties(
-                            title="Geração Estimada vs. Consumo Médio Mensal"
-                        )
-                        .interactive()
-                    )
+                                # 4. Usamos 'column' para criar os grupos de meses
+                                column=alt.Column(
+                                    "mes:N",
+                                    sort=alt.EncodingSortField(field="month"),
+                                    title="Mês",
+                                    # Posiciona o header ('Jan', 'Fev'...) na parte de baixo
+                                    header=alt.Header(
+                                        titleOrient="bottom", labelOrient="bottom"
+                                    ),
+                                ),
+                                tooltip=[
+                                    "mes",
+                                    "Tipo",
+                                    alt.Tooltip("Energia (kWh)", format=".0f"),
+                                ],
+                            )
+                            .properties(
+                                title="Geração Estimada vs. Consumo Mensal Informado"
+                            )
+                            .interactive()
+                        )  # Permite zoom e pan
 
-                st.altair_chart(generation_chart, use_container_width=True)
+                    else:  # Se foi informada apenas a média.
+                        bar_chart = (
+                            alt.Chart(df)
+                            .mark_bar(opacity=0.7, color=color_scale.range[0])
+                            .encode(  # Cor para Geração Estimada
+                                x=alt.X(
+                                    "mes:N",
+                                    sort=alt.EncodingSortField(field="month"),
+                                    title="Mês",
+                                    axis=alt.Axis(labelAngle=0),
+                                ),
+                                y=alt.Y(
+                                    "geracao_estimada_kwh:Q", title="Energia (kWh)"
+                                ),
+                                tooltip=[
+                                    alt.Tooltip("mes", title="Geração Estimada"),
+                                    alt.Tooltip("geracao_estimada_kwh", format=".0f"),
+                                ],
+                            )
+                            .properties(
+                                title="Geração Estimada vs. Consumo Médio Mensal"
+                            )
+                        )
+
+                        df_regua = pd.DataFrame(
+                            {
+                                "mes": df["mes"],
+                                "month": df["month"],
+                                "consumo": [consumo_mensal_kwh_calculado] * len(df),
+                                "Tipo": ["Consumo Médio"] * len(df),
+                            }
+                        )
+
+                        rule_consumo = (
+                            alt.Chart(df_regua)
+                            .mark_bar(opacity=0.7, color=color_scale.range[0])
+                            .encode(
+                                x=alt.X(
+                                    "mes:N", sort=alt.EncodingSortField(field="month")
+                                ),
+                                y=alt.Y("consumo:Q"),
+                                tooltip=[
+                                    alt.Tooltip(
+                                        "consumo", format=".0f", title="Consumo Médio"
+                                    )
+                                ],
+                                color=alt.Color(
+                                    "Tipo:N", scale=color_scale, title=None
+                                ),
+                            )
+                        )
+                        df_geracao = df.copy()
+                        df_geracao["Tipo"] = "Geração Estimada"
+                        df_geracao = df_geracao.rename(
+                            columns={"geracao_estimada_kwh": "valor_kwh"}
+                        )
+
+                        # 2. Padronize o Dataframe de Consumo (df_regua)
+                        # Você já criou o df_regua no seu código, só precisamos renomear a coluna de valor para igualar
+                        df_consumo = df_regua.copy()
+                        df_consumo = df_consumo.rename(columns={"consumo": "valor_kwh"})
+                        df_final = pd.concat(
+                            [
+                                df_geracao[["mes", "month", "valor_kwh", "Tipo"]],
+                                df_consumo[["mes", "month", "valor_kwh", "Tipo"]],
+                            ]
+                        )
+
+                        generation_chart = (
+                            alt.Chart(df_final)
+                            .mark_bar(
+                                opacity=0.9
+                            )  # Ajustei opacidade para ficar mais nítido
+                            .encode(
+                                x=alt.X(
+                                    "mes:N",
+                                    sort=alt.EncodingSortField(field="month"),
+                                    title="Mês",
+                                    axis=alt.Axis(labelAngle=0),
+                                ),
+                                y=alt.Y("valor_kwh:Q", title="Energia (kWh)"),
+                                # O 'color' define a cor baseada no Tipo (Geração vs Consumo)
+                                color=alt.Color(
+                                    "Tipo:N", scale=color_scale, title=None
+                                ),
+                                # --- O TRUQUE ESTÁ AQUI ---
+                                # xOffset desloca a barra baseado no Tipo, colocando-as lado a lado
+                                xOffset="Tipo:N",
+                                tooltip=[
+                                    alt.Tooltip("mes", title="Mês"),
+                                    alt.Tooltip("Tipo", title="Categoria"),
+                                    alt.Tooltip(
+                                        "valor_kwh", format=".0f", title="Energia (kWh)"
+                                    ),
+                                ],
+                            )
+                            .properties(
+                                title="Geração Estimada vs. Consumo Médio Mensal"
+                            )
+                            .interactive()
+                        )
+
+                    # --- INÍCIO DA CORREÇÃO ---
+                    # Esta é a linha que alteramos
+                    st.altair_chart(generation_chart)
+                    # --- FIM DA CORREÇÃO ---
 
                 # --- Geração do PDF ---
                 st.divider()
@@ -538,7 +677,9 @@ if st.session_state.show_results:
                             "Telefone": client_phone,
                         }
 
+                        # --- INÍCIO DA MODIFICAÇÃO ---
                         # Prepara os dados mensais para enviar ao PDF
+
                         meses_lista = list(df["mes"])
                         geracao_mensal_lista = list(df["geracao_estimada_kwh"])
 
@@ -562,13 +703,12 @@ if st.session_state.show_results:
                                 "Margem de Segurança (%)": margem_geracao_percent,
                                 "Inflação Energética Anual (%)": f"{inflacao_energia:.1f}",
                                 "TMA Anual (%)": f"{tma_anual * 100:.1f}",
-                                "Método de Dimensionamento": metodo_dimensionamento, # Adicionado
                             },
                             "resumo_geral": {
                                 "Potência Recomendada (kWp)": f"{tamanho_sistema_kwp:.2f}",
                                 "Custo Estimado da Instalação (R$)": f"{custo_estimado_sistema:,.2f}",
                                 "Geração Anual Estimada (kWh)": f"{geracao_anual_estimada:,.0f}",
-                                "Consumo Anual Total (kWh)": f"{consumo_anual_total:,.0f}",
+                                "Consumo Anual Total (kWh)": f"{consumo_anual_total:,.0f}",  # Adicionado
                                 "Economia Anual Líquida (R$)": f"{economia_anual_liquida:,.2f}",
                                 "CO2 Evitado em 25 anos (ton)": f"{co2_evitado_ton:,.2f}",
                                 "Árvores Equivalentes (25 anos)": f"{arvores_equivalentes:,.0f}",
@@ -578,6 +718,7 @@ if st.session_state.show_results:
                                 "Taxa Interna de Retorno (TIR)": f"{tir:.2f}% ao ano",
                                 "Payback Descontado": payback_descontado_ano,
                             },
+                            # --- NOVO BLOCO DE DADOS ADICIONADO ---
                             "dados_mensais": {
                                 "meses": meses_lista,
                                 "geracao_kwh": geracao_mensal_lista,
@@ -587,6 +728,7 @@ if st.session_state.show_results:
                                 "total_consumo_anual": consumo_anual_total,
                             },
                         }
+                        # --- FIM DA MODIFICAÇÃO ---
 
                         with st.spinner("Gerando relatório completo em PDF..."):
                             # Chama a função que cria o PDF e o codifica em Base64.
@@ -597,3 +739,4 @@ if st.session_state.show_results:
                             href = f'<a href="data:application/pdf;base64,{pdf_base64}" download="relatorio_viabilidade_solar_{client_name}.pdf">Clique aqui para baixar o Relatório PDF</a>'
                             st.markdown(href, unsafe_allow_html=True)
                             st.success("Relatório PDF gerado com sucesso!")
+
