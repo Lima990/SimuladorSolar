@@ -40,12 +40,12 @@ with st.container(border=True):
     col1, col2 = st.columns(2)
     with col1:
         cidade = st.text_input(
-            "Cidade e Estado ou CEP", "", help="Ex: São Paulo, SP ou 01000-001"
+            "Cidade e Estado, CEP ou logitude e latitude", "", help="Ex: São Paulo, SP, 01000-001, ou -23.55,-46.63."
         )
         tarifa_energia = st.number_input(
-            "Valor da tarifa de energia (R$/kWh)",
+            "Valor da tarifa de energia (R$/kWh)", "", help="Valor somado da Tarifa de Energia (TE), Tarifa de Uso do Sistema de Distribuição (TUSD) e demais Tributos e Encargos."
             min_value=0.10,
-            value=0.95,
+            value=1.20,
             step=0.01,
             format="%.2f",
         )
@@ -452,3 +452,4 @@ if st.session_state.show_results:
                             href = f'<a href="data:application/pdf;base64,{pdf_base64}" download="relatorio_viabilidade_solar_{client_name}.pdf">Clique aqui para baixar o Relatório PDF</a>'
                             st.markdown(href, unsafe_allow_html=True)
                             st.success("Relatório PDF gerado com sucesso!")
+
