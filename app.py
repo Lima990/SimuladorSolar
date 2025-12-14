@@ -281,7 +281,7 @@ if st.session_state.show_results:
                 # Validação para evitar divisão por zero
                 if fator_dimensionamento <= 0:
                     st.error(f"O fator de dimensionamento ({nome_fator}) é zero ou negativo. Verifique os dados de geração.")
-                    return # Sai da execução se o fator for inválido
+                    st.stop() # Sai da execução se o fator for inválido
 
                 # Calcula o consumo que o sistema precisa suprir, incluindo a margem de segurança.
                 consumo_desejado_kwh = consumo_mensal_kwh_calculado * (
