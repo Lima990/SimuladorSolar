@@ -45,7 +45,7 @@ with st.container(border=True):
         tarifa_energia = st.number_input(
             "Valor da tarifa de energia (R$/kWh)", help="Valor somado da Tarifa de Energia (TE), Tarifa de Uso do Sistema de Distribuição (TUSD) e demais Tributos e Encargos.",
             min_value=0.10,
-            value=,
+            value=1,00,
             step=0.01,
             format="%.2f",
         )
@@ -72,7 +72,7 @@ with st.container(border=True):
         for i, mes in enumerate(meses):
             with cols[i % 6]:
                 consumo_mes = st.number_input(
-                    f"{mes}", min_value=0, value=, step=10, key=f"consumo_{mes}"
+                    f"{mes}", min_value=0, value=0, step=10, key=f"consumo_{mes}"
                 )
                 consumos_mensais.append(consumo_mes)
 
@@ -84,8 +84,8 @@ with st.container(border=True):
         custo_watt_pico_modulo = st.number_input(
             "Custo do kit fotovoltaico (R$/Wp)", 
             0.50, 
-            3.00, 
-            1.20, 
+            4.00, 
+            1.00, 
             0.05,
             help="Kit fotovoltaico: Placas, Inversor, Estrutura, Cabeamento solar, Conectores MC4."
 
@@ -94,15 +94,15 @@ with st.container(border=True):
     with col4:
         custo_bos_watt_pico = st.number_input(
             "Custo do BoS* (R$/Wp)",
-            0.80,
+            0.50,
             4.00,
-            1.60,
+            1.00,
             0.05,
             help="*Balance of System: Projeto, Instalação, Cabeamento CA, Disjuntor, DPS, etc.",
         )
     with col5:
         tipo_conexao = st.selectbox(
-            "Tipo de Conexão", ["Trifásico", "Bifásico", "Monofásico"]
+            "Tipo de Conexão", [" ","Trifásico", "Bifásico", "Monofásico"]
         )
 
 # --- Cartão 3: Parâmetros de Simulação e Financeiros (ALTERADO) ---
@@ -123,15 +123,15 @@ with st.container(border=True):
     col6, col7, col8 = st.columns(3)
     with col6:
         perdas_sistema = st.slider(
-            "Perdas totais do sistema (%)", 5, 25, 14
+            "Perdas totais do sistema (%)", 0, 30, 0
         )
     with col7:
         margem_geracao_percent = st.slider(
-            "Margem de segurança na geração (%)", 0, 50, 15
+            "Margem de segurança na geração (%)", 0, 50, 0
         )
     with col8:
         inflacao_energia = st.slider(
-            "Inflação da tarifa de energia (% a.a.)", 1.0, 15.0, 7.0, 0.5
+            "Inflação da tarifa de energia (% a.a.)", 0.0, 15.0, 0, 0.5
         )
 
 # --- Cartão 4: Financiamento ---
@@ -150,15 +150,15 @@ with st.container(border=True):
         fin_col1, fin_col2, fin_col3 = st.columns(3)
         with fin_col1:
             valor_entrada = st.number_input(
-                "Valor da Entrada (R$)", min_value=0.0, value=5000.0, step=500.0
+                "Valor da Entrada (R$)", min_value=0.0, value=0, step=500.0
             )
         with fin_col2:
             taxa_juros_mensal = st.number_input(
-                "Taxa de Juros (% a.m.)", min_value=0.1, value=1.8, step=0.1
+                "Taxa de Juros (% a.m.)", min_value=0.1, value=0, step=0.1
             )
         with fin_col3:
             prazo_meses = st.number_input(
-                "Prazo (Meses)", min_value=12, value=60, step=12
+                "Prazo (Meses)", min_value=12, value=0, step=12
             )
 
 submit_button = st.button(label="▶️ Iniciar Simulação Completa")
@@ -459,6 +459,7 @@ if st.session_state.show_results:
                             href = f'<a href="data:application/pdf;base64,{pdf_base64}" download="relatorio_viabilidade_solar_{client_name}.pdf">Clique aqui para baixar o Relatório PDF</a>'
                             st.markdown(href, unsafe_allow_html=True)
                             st.success("Relatório PDF gerado com sucesso!")
+
 
 
 
