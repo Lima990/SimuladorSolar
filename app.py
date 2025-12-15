@@ -63,7 +63,7 @@ with st.container(border=True):
 
     if tipo_consumo == "Média Mensal":
         consumo_mensal_kwh = st.number_input(
-            "Consumo médio mensal (kWh)", min_value=50, value=350, step=10
+            "Consumo médio mensal (kWh)", min_value=50, value=0.0, step=10
         )
     else:
         st.markdown("###### Consumo (kWh) de cada mês:")
@@ -72,7 +72,7 @@ with st.container(border=True):
         for i, mes in enumerate(meses):
             with cols[i % 6]:
                 consumo_mes = st.number_input(
-                    f"{mes}", min_value=0, value=0, step=10, key=f"consumo_{mes}"
+                    f"{mes}", min_value=0, value=0.0, step=10, key=f"consumo_{mes}"
                 )
                 consumos_mensais.append(consumo_mes)
 
@@ -131,7 +131,7 @@ with st.container(border=True):
         )
     with col8:
         inflacao_energia = st.slider(
-            "Inflação da tarifa de energia (% a.a.)", 0.0, 15.0, 0, 0.5
+            "Inflação da tarifa de energia (% a.a.)", 0.0, 15.0, 0.0, 0.5
         )
 
 # --- Cartão 4: Financiamento ---
@@ -459,6 +459,7 @@ if st.session_state.show_results:
                             href = f'<a href="data:application/pdf;base64,{pdf_base64}" download="relatorio_viabilidade_solar_{client_name}.pdf">Clique aqui para baixar o Relatório PDF</a>'
                             st.markdown(href, unsafe_allow_html=True)
                             st.success("Relatório PDF gerado com sucesso!")
+
 
 
 
