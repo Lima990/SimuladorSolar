@@ -43,7 +43,8 @@ with st.container(border=True):
             "Cidade e Estado, CEP ou Latitude e Longitude", "", help="Ex: São Paulo, SP, 01000-001, ou -23.55,-46.63."
         )
         tarifa_energia = st.number_input(
-            "Valor da tarifa de energia (R$/kWh)", help="Valor somado da Tarifa de Energia (TE), Tarifa de Uso do Sistema de Distribuição (TUSD) e demais Tributos e Encargos.",
+            "Valor da tarifa de energia (R$/kWh)",
+            help="Valor somado da Tarifa de Energia (TE), Tarifa de Uso do Sistema de Distribuição (TUSD) e demais Tributos e Encargos.",
             min_value=0.10,
             value=1.00,
             step=0.01,
@@ -63,7 +64,7 @@ with st.container(border=True):
 
     if tipo_consumo == "Média Mensal":
         consumo_mensal_kwh = st.number_input(
-            "Consumo médio mensal (kWh)", min_value=50, value=0.0, step=10
+            "Consumo médio mensal (kWh)", min_value=50, value=350, step=10
         )
     else:
         st.markdown("###### Consumo (kWh) de cada mês:")
@@ -72,7 +73,7 @@ with st.container(border=True):
         for i, mes in enumerate(meses):
             with cols[i % 6]:
                 consumo_mes = st.number_input(
-                    f"{mes}", min_value=0, value=0.0, step=10, key=f"consumo_{mes}"
+                    f"{mes}", min_value=0, value=350, step=10, key=f"consumo_{mes}"
                 )
                 consumos_mensais.append(consumo_mes)
 
@@ -85,11 +86,9 @@ with st.container(border=True):
             "Custo do kit fotovoltaico (R$/Wp)", 
             0.50, 
             4.00, 
-            1.00, 
+            1.20, # Ajustado valor padrão razoável
             0.05,
             help="Kit fotovoltaico: Placas, Inversor, Estrutura, Cabeamento solar, Conectores MC4."
-
-            
         )
     with col4:
         custo_bos_watt_pico = st.number_input(
@@ -101,15 +100,15 @@ with st.container(border=True):
             help="*Balance of System: Projeto, Instalação, Cabeamento CA, Disjuntor, DPS, etc.",
         )
     with col5:
+        # CORREÇÃO: Removido o espaço vazio " " da lista para evitar KeyError
         tipo_conexao = st.selectbox(
-            "Tipo de Conexão", [" ","Trifásico", "Bifásico", "Monofásico"]
+            "Tipo de Conexão", ["Trifásico", "Bifásico", "Monofásico"]
         )
 
-# --- Cartão 3: Parâmetros de Simulação e Financeiros (ALTERADO) ---
+# --- Cartão 3: Parâmetros de Simulação e Financeiros ---
 with st.container(border=True):
     st.subheader("📈 Parâmetros de Simulação e Financeiros")
     
-    # --- NOVA OPÇÃO DE DIMENSIONAMENTO AQUI ---
     st.markdown("**Critério de Dimensionamento:**")
     metodo_dimensionamento = st.radio(
         "Definir tamanho do sistema (kWp) baseando-se em:",
@@ -118,20 +117,22 @@ with st.container(border=True):
         help="Média Anual: Otimiza o ROI (Gera créditos no verão para usar no inverno). Pior Mês: Sistema maior, garante a meta mesmo no inverno."
     )
     st.divider()
-    # ------------------------------------------
 
     col6, col7, col8 = st.columns(3)
     with col6:
+        # Ajustei valor padrão para 15% (mais realista que 0)
         perdas_sistema = st.slider(
-            "Perdas totais do sistema (%)", 0, 30, 0
+            "Perdas totais do sistema (%)", 0, 30, 15
         )
     with col7:
+        # Ajustei valor padrão para 10%
         margem_geracao_percent = st.slider(
-            "Margem de segurança na geração (%)", 0, 50, 0
+            "Margem de segurança na geração (%)", 0, 50, 10
         )
     with col8:
+        # Ajustei valor padrão para 6% (IPCA energia histórico)
         inflacao_energia = st.slider(
-            "Inflação da tarifa de energia (% a.a.)", 0.0, 15.0, 0.0, 0.5
+            "Inflação da tarifa de energia (% a.a.)", 0.0, 15.0, 6.0, 0.5
         )
 
 # --- Cartão 4: Financiamento ---
@@ -150,15 +151,17 @@ with st.container(border=True):
         fin_col1, fin_col2, fin_col3 = st.columns(3)
         with fin_col1:
             valor_entrada = st.number_input(
-                "Valor da Entrada (R$)", min_value=0.0, value=0, step=500.0
+                "Valor da Entrada (R$)", min_value=0.0, value=0.0, step=500.0
             )
         with fin_col2:
+            # CORREÇÃO: O value deve ser >= min_value. Mudei de 0 para 1.5
             taxa_juros_mensal = st.number_input(
-                "Taxa de Juros (% a.m.)", min_value=0.1, value=0, step=0.1
+                "Taxa de Juros (% a.m.)", min_value=0.1, value=1.5, step=0.1
             )
         with fin_col3:
+            # CORREÇÃO: O value deve ser >= min_value. Mudei de 0 para 60
             prazo_meses = st.number_input(
-                "Prazo (Meses)", min_value=12, value=0, step=12
+                "Prazo (Meses)", min_value=12, value=60, step=12
             )
 
 submit_button = st.button(label="▶️ Iniciar Simulação Completa")
@@ -193,12 +196,13 @@ if st.session_state.show_results:
                     "Bifásico": 50,
                     "Trifásico": 100,
                 }
+                
+                # A correção no selectbox acima (removendo " ") impede erro aqui
                 disponibilidade_kwh = mapa_disponibilidade[tipo_conexao]
                 custo_disponibilidade_mensal = disponibilidade_kwh * tarifa_energia
 
                 df = pd.DataFrame(pvgis_data["outputs"]["monthly"]["fixed"])
 
-                # --- LÓGICA DE DIMENSIONAMENTO ALTERADA ---
                 fator_geracao_pior_mes = df["E_m"].min()
                 fator_geracao_media = df["E_m"].mean()
 
@@ -211,13 +215,11 @@ if st.session_state.show_results:
                     1 + margem_geracao_percent / 100
                 )
 
-                # Usa o fator escolhido para calcular o tamanho
                 tamanho_sistema_kwp = (
                     consumo_desejado_kwh / fator_dimensionamento
                     if fator_dimensionamento > 0
                     else 0
                 )
-                # ------------------------------------------
 
                 df["geracao_estimada_kwh"] = df["E_m"] * tamanho_sistema_kwp
 
@@ -240,7 +242,7 @@ if st.session_state.show_results:
                 # --- EXIBIÇÃO DOS RESULTADOS ---
                 with st.container(border=True):
                     st.header("📊 Resumo Geral")
-                    st.info(f"Dimensionamento calculado pela: **{metodo_dimensionamento}**") # Feedback visual
+                    st.info(f"Dimensionamento calculado pela: **{metodo_dimensionamento}**")
                     resumo_col1, resumo_col2, resumo_col3 = st.columns(3)
                     with resumo_col1:
                         st.metric("Potência Recomendada", f"{tamanho_sistema_kwp:.2f} kWp")
@@ -428,7 +430,7 @@ if st.session_state.show_results:
                                 "Margem de Segurança (%)": margem_geracao_percent,
                                 "Inflação Energética Anual (%)": f"{inflacao_energia:.1f}",
                                 "TMA Anual (%)": f"{tma_anual * 100:.1f}",
-                                "Dimensionamento": metodo_dimensionamento, # Adicionado ao relatório
+                                "Dimensionamento": metodo_dimensionamento,
                             },
                             "resumo_geral": {
                                 "Potência Recomendada (kWp)": f"{tamanho_sistema_kwp:.2f}",
@@ -459,10 +461,3 @@ if st.session_state.show_results:
                             href = f'<a href="data:application/pdf;base64,{pdf_base64}" download="relatorio_viabilidade_solar_{client_name}.pdf">Clique aqui para baixar o Relatório PDF</a>'
                             st.markdown(href, unsafe_allow_html=True)
                             st.success("Relatório PDF gerado com sucesso!")
-
-
-
-
-
-
-
