@@ -64,7 +64,7 @@ with st.container(border=True):
 
     if tipo_consumo == "Média Mensal":
         consumo_mensal_kwh = st.number_input(
-            "Consumo médio mensal (kWh)", min_value=50, value=0, step=10
+            "Consumo médio mensal (kWh)", min_value=50, value=500, step=10
         )
     else:
         st.markdown("###### Consumo (kWh) de cada mês:")
@@ -73,7 +73,7 @@ with st.container(border=True):
         for i, mes in enumerate(meses):
             with cols[i % 6]:
                 consumo_mes = st.number_input(
-                    f"{mes}", min_value=0, value=0, step=10, key=f"consumo_{mes}"
+                    f"{mes}", min_value=0, value=500, step=10, key=f"consumo_{mes}"
                 )
                 consumos_mensais.append(consumo_mes)
 
@@ -86,7 +86,7 @@ with st.container(border=True):
             "Custo do kit fotovoltaico (R$/Wp)", 
             0.50, 
             4.00, 
-            1.20, # Ajustado valor padrão razoável
+            1.00,
             0.05,
             help="Kit fotovoltaico: Placas, Inversor, Estrutura, Cabeamento solar, Conectores MC4."
         )
@@ -100,7 +100,6 @@ with st.container(border=True):
             help="*Balance of System: Projeto, Instalação, Cabeamento CA, Disjuntor, DPS, etc.",
         )
     with col5:
-        # CORREÇÃO: Removido o espaço vazio " " da lista para evitar KeyError
         tipo_conexao = st.selectbox(
             "Tipo de Conexão", ["Trifásico", "Bifásico", "Monofásico"]
         )
@@ -197,7 +196,6 @@ if st.session_state.show_results:
                     "Trifásico": 100,
                 }
                 
-                # A correção no selectbox acima (removendo " ") impede erro aqui
                 disponibilidade_kwh = mapa_disponibilidade[tipo_conexao]
                 custo_disponibilidade_mensal = disponibilidade_kwh * tarifa_energia
 
@@ -461,4 +459,5 @@ if st.session_state.show_results:
                             href = f'<a href="data:application/pdf;base64,{pdf_base64}" download="relatorio_viabilidade_solar_{client_name}.pdf">Clique aqui para baixar o Relatório PDF</a>'
                             st.markdown(href, unsafe_allow_html=True)
                             st.success("Relatório PDF gerado com sucesso!")
+
 
